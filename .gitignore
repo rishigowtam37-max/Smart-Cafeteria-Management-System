@@ -1,2 +1,21 @@
+# Java build output (original console app)
 *.class
 .vscode/
+
+# Node / Vite
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Environment files - the .env.example template stays tracked
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

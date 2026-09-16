@@ -1,0 +1,86 @@
+/**
+ * Modal receipt shown right after a customer places an order.
+ *
+ * Exports the default OrderConfirmation component. It renders the generated
+ * order ID, the customer name, every line and the total - the same information
+ * the Java Order.toString() printed as an ASCII bill.
+ */
+
+import { formatOrderTime, formatRupees } from '../utils/formatters.js';
+import { calculateLineTotal } from '../utils/orderUtils.js';
+
+/**
+ * @param {{ order: object, onDismiss: () => void }} props - The placed order and
+ *   a handler that closes the receipt.
+ * @returns {JSX.Element} A centred modal dialog.
+ */
+export default function OrderConfirmation({ order, onDismiss }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label="Dismiss order summary"
+        onClick={onDismiss}
+        className="absolute inset-0 bg-cocoa/50"
+      />
+
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="order-confirmation-heading"
+        className="animate-rise relative flex max-h-[88vh] w-full max-w-md flex-col overflow-hidden rounded-3xl bg-shell shadow-lift"
+      >
+        <div className="bg-saffron-soft px-6 py-7 text-center">
+          <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-saffron text-xl text-white">
+            ✓
+          </span>
+          <h2 id="order-confirmation-heading" className="mt-3 text-2xl font-semibold text-cocoa">
+            Order placed
+          </h2>
+          <p className="mt-1 text-sm text-bark">
+            We&rsquo;ll call your order ID at the counter.
+          </p>
+          <p className="mt-4 inline-block rounded-full bg-shell px-4 py-1.5 text-sm font-semibold tracking-wide text-saffron">
+            {order.orderId}
+          </p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <div className="mb-4 flex justify-between text-xs uppercase tracking-wide text-bark">
+            <span>{order.customerName}</span>
+            <span>{formatOrderTime(order.placedAt)}</span>
+          </div>
+
+          <ul className="divide-y divide-clay/50">
+            {order.items.map((item) => (
+              <li key={item.id} className="flex items-start justify-between gap-3 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-cocoa">{item.name}</p>
+                  <p className="mt-0.5 text-xs text-bark">
+                    {formatRupees(item.price)} × {item.quantity}
+                  </p>
+                </div>
+                <p className="shrink-0 text-sm font-semibold text-cocoa">
+                  {formatRupees(calculateLineTotal(item))}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="border-t border-clay/60 bg-cream/60 px-6 py-5">
+          <div className="mb-4 flex items-baseline justify-between">
+            <span className="text-sm font-medium text-bark">Total amount</span>
+            <span className="text-2xl font-semibold text-cocoa">
+              {formatRupees(order.totalAmount)}
+            </span>
+          </div>
+
+          <button type="button" onClick={onDismiss} className="button-primary w-full">
+            Back to menu
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,143 @@
+/*
+ * Global stylesheet and design tokens for FlowBite.
+ *
+ * Imports Tailwind CSS v4 and defines the project's theme in the CSS-first
+ * `@theme` block: a warm neutral palette (cream/sand/clay/cocoa) with saffron
+ * as the single accent colour, plus the two font stacks and the shared shadow.
+ * Every token declared here becomes a Tailwind utility, e.g. `bg-cream`,
+ * `text-cocoa`, `font-display`, `shadow-card`.
+ *
+ * Also exports a handful of small component classes used across the app
+ * (buttons, cards, inputs) so the warm styling stays consistent instead of
+ * being re-typed on every element.
+ */
+
+@import 'tailwindcss';
+
+@theme {
+  /* Warm neutrals - page background through to darkest text */
+  --color-cream: #fbf6ef;
+  --color-shell: #ffffff;
+  --color-sand: #f3e9dc;
+  --color-clay: #e3d3c0;
+  --color-bark: #8a7460;
+  --color-cocoa: #2f241c;
+
+  /* Single accent: saffron, with a deeper tone for hover/active states */
+  --color-saffron: #d8571f;
+  --color-saffron-deep: #b1420f;
+  --color-saffron-soft: #fdeee4;
+
+  /* Support colours, used only for status signalling */
+  --color-leaf: #2f7a56;
+  --color-leaf-soft: #e6f2ec;
+  --color-ember: #b3261e;
+  --color-ember-soft: #fbeae9;
+
+  --font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia,
+    'Times New Roman', serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+
+  --shadow-card: 0 1px 2px rgb(47 36 28 / 0.04), 0 8px 24px rgb(47 36 28 / 0.06);
+  --shadow-lift: 0 2px 4px rgb(47 36 28 / 0.06), 0 18px 40px rgb(47 36 28 / 0.12);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-cream);
+    color: var(--color-cocoa);
+    font-family: var(--font-sans);
+    /* Subtle warm gradient wash so the page never reads as flat white */
+    background-image: radial-gradient(
+      120% 80% at 50% 0%,
+      #fdf3e6 0%,
+      var(--color-cream) 55%
+    );
+    background-attachment: fixed;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+  }
+
+  /* Consistent focus ring for keyboard users across every interactive element */
+  :focus-visible {
+    outline: 2px solid var(--color-saffron);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .surface-card {
+    @apply rounded-3xl border border-clay/60 bg-shell shadow-card;
+  }
+
+  .button-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-saffron
+      px-5 py-2.5 text-sm font-semibold text-white transition
+      hover:bg-saffron-deep active:scale-[0.98]
+      disabled:cursor-not-allowed disabled:bg-clay disabled:text-bark
+      disabled:hover:bg-clay disabled:active:scale-100;
+  }
+
+  .button-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full border
+      border-clay bg-shell px-5 py-2.5 text-sm font-semibold text-cocoa
+      transition hover:border-bark hover:bg-sand active:scale-[0.98];
+  }
+
+  .button-quiet {
+    @apply inline-flex items-center justify-center rounded-full px-3 py-1.5
+      text-sm font-medium text-bark transition hover:bg-sand hover:text-cocoa;
+  }
+
+  .field-label {
+    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wider text-bark;
+  }
+
+  .field-input {
+    @apply w-full rounded-xl border border-clay bg-cream/60 px-4 py-2.5 text-sm
+      text-cocoa placeholder:text-bark/60 transition
+      focus:border-saffron focus:bg-shell focus:outline-none;
+  }
+
+  /* Small circular +/- control used by the cart quantity stepper */
+  .stepper-button {
+    @apply flex h-7 w-7 items-center justify-center rounded-full border
+      border-clay bg-shell text-base leading-none text-cocoa transition
+      hover:border-saffron hover:text-saffron
+      disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-clay
+      disabled:hover:text-cocoa;
+  }
+}
+
+/* Entry animation for the cart drawer and modal dialogs */
+@keyframes flowbite-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-rise {
+  animation: flowbite-rise 220ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise {
+    animation: none;
+  }
+}

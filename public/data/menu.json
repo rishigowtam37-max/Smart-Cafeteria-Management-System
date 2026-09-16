@@ -1,0 +1,110 @@
+[
+  {
+    "id": 1,
+    "name": "Veg Burger",
+    "price": 80,
+    "quantity": 20,
+    "category": "Snacks",
+    "description": "Crisp potato-and-pea patty, mint mayo, toasted bun.",
+    "emoji": "🍔"
+  },
+  {
+    "id": 2,
+    "name": "Chicken Burger",
+    "price": 120,
+    "quantity": 15,
+    "category": "Snacks",
+    "description": "Spiced grilled chicken with slaw and chilli aioli.",
+    "emoji": "🍗"
+  },
+  {
+    "id": 3,
+    "name": "French Fries",
+    "price": 60,
+    "quantity": 25,
+    "category": "Snacks",
+    "description": "Thick-cut fries tossed in peri-peri masala.",
+    "emoji": "🍟"
+  },
+  {
+    "id": 4,
+    "name": "Pizza",
+    "price": 180,
+    "quantity": 10,
+    "category": "Main Course",
+    "description": "Wood-fired margherita with tomato, basil and mozzarella.",
+    "emoji": "🍕"
+  },
+  {
+    "id": 5,
+    "name": "Coke",
+    "price": 40,
+    "quantity": 30,
+    "category": "Beverages",
+    "description": "Chilled 300 ml bottle, served over ice.",
+    "emoji": "🥤"
+  },
+  {
+    "id": 6,
+    "name": "Masala Dosa",
+    "price": 70,
+    "quantity": 18,
+    "category": "South Indian",
+    "description": "Golden rice crepe with potato masala, chutney and sambar.",
+    "emoji": "🥞"
+  },
+  {
+    "id": 7,
+    "name": "Idli Sambar",
+    "price": 50,
+    "quantity": 24,
+    "category": "South Indian",
+    "description": "Three steamed idlis with lentil sambar and coconut chutney.",
+    "emoji": "🍚"
+  },
+  {
+    "id": 8,
+    "name": "Veg Biryani",
+    "price": 110,
+    "quantity": 16,
+    "category": "Main Course",
+    "description": "Dum-cooked basmati with seasonal vegetables and raita.",
+    "emoji": "🍛"
+  },
+  {
+    "id": 9,
+    "name": "Paneer Butter Masala Thali",
+    "price": 150,
+    "quantity": 12,
+    "category": "Main Course",
+    "description": "Paneer in makhani gravy, dal, two rotis, rice and salad.",
+    "emoji": "🍲"
+  },
+  {
+    "id": 10,
+    "name": "Samosa",
+    "price": 25,
+    "quantity": 40,
+    "category": "Snacks",
+    "description": "Two flaky samosas with tamarind and coriander chutney.",
+    "emoji": "🥟"
+  },
+  {
+    "id": 11,
+    "name": "Masala Chai",
+    "price": 20,
+    "quantity": 50,
+    "category": "Beverages",
+    "description": "Strong cutting chai brewed with ginger and cardamom.",
+    "emoji": "☕"
+  },
+  {
+    "id": 12,
+    "name": "Gulab Jamun",
+    "price": 40,
+    "quantity": 0,
+    "category": "Desserts",
+    "description": "Two warm khoya dumplings soaked in rose syrup.",
+    "emoji": "🍮"
+  }
+]
