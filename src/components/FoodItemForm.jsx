@@ -8,8 +8,20 @@
  */
 
 import { useState } from 'react';
-import { createBlankFoodItem } from '../data/menuRepository.js';
-import { FOOD_CATEGORIES } from '../data/credentials.js';
+import { FOOD_CATEGORIES } from '../data/categories.js';
+
+/**
+ * Empty form values. Every field is defined so each input stays controlled,
+ * even when an item is missing an optional one. No id: the server assigns it.
+ */
+const BLANK_FOOD_ITEM = {
+  name: '',
+  price: '',
+  quantity: '',
+  category: 'Snacks',
+  description: '',
+  emoji: '\u{1F37D}\uFE0F',
+};
 
 /**
  * @param {{
@@ -23,7 +35,7 @@ export default function FoodItemForm({ existingItem, onSubmit, onCancel }) {
   // Spreading over the blank item guarantees every field is defined, so each
   // input stays controlled even if an item is missing an optional field.
   const [formValues, setFormValues] = useState(() => ({
-    ...createBlankFoodItem(),
+    ...BLANK_FOOD_ITEM,
     ...(existingItem ?? {}),
   }));
   const [validationError, setValidationError] = useState('');
@@ -100,8 +112,8 @@ export default function FoodItemForm({ existingItem, onSubmit, onCancel }) {
         </h2>
         <p className="mt-1 mb-6 text-sm text-bark">
           {isEditing
-            ? `Updating "${existingItem.name}" (ID ${existingItem.id}).`
-            : 'This item appears on the customer menu immediately.'}
+            ? `Updating "${existingItem.name}" (ID ${existingItem.id}). Price changes reach carts that already hold it.`
+            : 'This item appears on the customer menu immediately. The server assigns its ID.'}
         </p>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -138,7 +150,7 @@ export default function FoodItemForm({ existingItem, onSubmit, onCancel }) {
 
           <div>
             <label className="field-label" htmlFor="food-quantity">
-              Stock
+              Available quantity
             </label>
             <input
               id="food-quantity"
@@ -148,9 +160,14 @@ export default function FoodItemForm({ existingItem, onSubmit, onCancel }) {
               className="field-input"
               value={formValues.quantity}
               onChange={(event) => handleFieldChange('quantity', event.target.value)}
+              aria-describedby="food-quantity-help"
               placeholder="20"
               required
             />
+            <p id="food-quantity-help" className="mt-1.5 text-xs leading-snug text-bark">
+              Units that can still be ordered. Anything already sitting in a
+              customer&rsquo;s cart is reserved and is not counted here.
+            </p>
           </div>
 
           <div>

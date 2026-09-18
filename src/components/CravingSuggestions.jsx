@@ -23,7 +23,7 @@ import { formatRupees } from '../utils/formatters.js';
  *   found nothing suitable on the menu.
  */
 export default function CravingSuggestions({ headline, picks, onDismiss }) {
-  const { cartItems, addToCart } = useCafeteria();
+  const { cart, addToCart, isBusy } = useCafeteria();
 
   if (picks.length === 0) {
     return (
@@ -51,8 +51,8 @@ export default function CravingSuggestions({ headline, picks, onDismiss }) {
 
       <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {picks.map(({ item, reason }, pickIndex) => {
-          const quantityInCart = cartItems.find((line) => line.id === item.id)?.quantity ?? 0;
-          const isStockExhausted = quantityInCart >= item.quantity;
+          const quantityInCart = cart.lines.find((line) => line.foodId === item.id)?.quantity ?? 0;
+          const isStockExhausted = !item.available;
 
           return (
             <li
@@ -83,7 +83,7 @@ export default function CravingSuggestions({ headline, picks, onDismiss }) {
                 <button
                   type="button"
                   onClick={() => addToCart(item)}
-                  disabled={isStockExhausted}
+                  disabled={isStockExhausted || isBusy}
                   className="button-primary w-full px-4"
                 >
                   {quantityInCart > 0 ? `In cart · ${quantityInCart}` : 'Add'}

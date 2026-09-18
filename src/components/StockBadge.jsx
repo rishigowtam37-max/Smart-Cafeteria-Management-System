@@ -6,8 +6,9 @@
  */
 
 /**
- * @param {{ quantity: number }} props - Remaining units of the food item.
- * @returns {JSX.Element} A green "N in stock" pill, or a red "Sold out" pill.
+ * @param {{ quantity: number }} props - Units still available to order. Units
+ *   held in customers' carts are already reserved and excluded.
+ * @returns {JSX.Element} A green "N available" pill, or a red "Sold out" pill.
  */
 export default function StockBadge({ quantity }) {
   const isAvailable = quantity > 0;
@@ -18,7 +19,7 @@ export default function StockBadge({ quantity }) {
         isAvailable ? 'bg-leaf-soft text-leaf' : 'bg-ember-soft text-ember'
       }`}
     >
-      {isAvailable ? `${quantity} in stock` : 'Sold out'}
+      {isAvailable ? `${quantity} available` : 'Sold out'}
     </span>
   );
 }

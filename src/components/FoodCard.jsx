@@ -2,9 +2,12 @@
  * One food item presented as a card: emoji tile, name, category, description,
  * availability badge, price and an add-to-cart control.
  *
- * Exports the default FoodCard component. It reads the cart from context so the
- * button can flip to "in cart" state and stop at the stock limit, which is the
- * web version of the "Not enough stock available." guard in CartService.
+ * Exports the default FoodCard component.
+ *
+ * The stock shown is whatever the server last reported, and it moves as other
+ * customers shop - units are reserved the moment they enter anyone's cart. The
+ * disabled button is a courtesy, not the rule: adding past the limit is refused
+ * by CartService with "Not enough stock available." whatever the button says.
  */
 
 import { useCafeteria } from '../context/CafeteriaContext.jsx';
@@ -15,11 +18,10 @@ import { formatRupees } from '../utils/formatters.js';
  * @returns {JSX.Element} A menu card.
  */
 export default function FoodCard({ foodItem }) {
-  const { cartItems, addToCart } = useCafeteria();
+  const { cart, addToCart, isBusy } = useCafeteria();
 
-  const quantityInCart = cartItems.find((line) => line.id === foodItem.id)?.quantity ?? 0;
-  const isAvailable = foodItem.quantity > 0;
-  const isStockExhausted = quantityInCart >= foodItem.quantity;
+  const quantityInCart = cart.lines.find((line) => line.foodId === foodItem.id)?.quantity ?? 0;
+  const isAvailable = foodItem.available;
   const isRunningLow = isAvailable && foodItem.quantity <= 5;
 
   return (
@@ -73,7 +75,7 @@ export default function FoodCard({ foodItem }) {
         <button
           type="button"
           onClick={() => addToCart(foodItem)}
-          disabled={!isAvailable || isStockExhausted}
+          disabled={!isAvailable || isBusy}
           className="button-primary px-4"
         >
           {quantityInCart > 0 ? `In cart · ${quantityInCart}` : 'Add'}

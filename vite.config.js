@@ -18,5 +18,15 @@ export default defineConfig({
   server: {
     port: 5173,
     open: false,
+    // Everything under /api goes to the Spring Boot application. Proxying rather
+    // than calling http://localhost:8080 directly keeps the browser on one
+    // origin, so the JSESSIONID cookie is sent with every request and no CORS
+    // configuration is needed on either side.
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+    },
   },
 });

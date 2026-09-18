@@ -8,7 +8,6 @@
 
 import { useState } from 'react';
 import { useCafeteria } from '../context/CafeteriaContext.jsx';
-import { getNextFoodItemId } from '../data/menuRepository.js';
 import { formatRupees } from '../utils/formatters.js';
 import MenuTable from './MenuTable.jsx';
 import FoodItemForm from './FoodItemForm.jsx';
@@ -20,26 +19,52 @@ const TABS = [
 ];
 
 export default function AdminView() {
-  const { menuItems, orders, addFoodItem, updateFoodItem, deleteFoodItem } = useCafeteria();
+  const {
+    menuItems,
+    orders,
+    adminStats,
+    addFoodItem,
+    updateFoodItem,
+    deleteFoodItem,
+    refreshOrders,
+    isBusy,
+  } = useCafeteria();
   const [activeTab, setActiveTab] = useState('menu');
 
   // null = form closed, 'new' = adding, an object = editing that item.
   const [formTarget, setFormTarget] = useState(null);
 
-  const totalRevenue = orders.reduce((runningTotal, order) => runningTotal + order.totalAmount, 0);
-  const soldOutCount = menuItems.filter((item) => item.quantity === 0).length;
+  /**
+   * Switches tab, refetching orders when opening that one.
+   *
+   * Orders arrive from customers in other browsers, so the list this admin
+   * loaded at sign-in goes stale on its own. Refetching on tab open is enough
+   * without polling.
+   *
+   * @param {'menu' | 'orders'} tabId
+   * @returns {void}
+   */
+  function handleTabChange(tabId) {
+    setActiveTab(tabId);
+
+    if (tabId === 'orders') {
+      refreshOrders();
+    }
+  }
 
   /**
    * Saves the form, either appending a new item or replacing an existing one.
    *
    * @param {object} submittedItem - Values from FoodItemForm, already numeric.
-   * @returns {void}
+   * @returns {Promise<void>}
    */
-  function handleFormSubmit(submittedItem) {
+  async function handleFormSubmit(submittedItem) {
+    // No id is sent when adding - FoodService.nextId() assigns it, so two
+    // admins adding at once cannot land on the same one.
     if (formTarget === 'new') {
-      addFoodItem({ ...submittedItem, id: getNextFoodItemId(menuItems) });
+      await addFoodItem(submittedItem);
     } else {
-      updateFoodItem({ ...submittedItem, id: formTarget.id });
+      await updateFoodItem(formTarget.id, submittedItem);
     }
 
     setFormTarget(null);
@@ -50,21 +75,23 @@ export default function AdminView() {
    * be undone from the UI.
    *
    * @param {object} foodItem - Item the admin chose to delete.
-   * @returns {void}
+   * @returns {Promise<void>}
    */
-  function handleDelete(foodItem) {
+  async function handleDelete(foodItem) {
     const isConfirmed = window.confirm(`Delete "${foodItem.name}" from the menu?`);
 
     if (isConfirmed) {
-      deleteFoodItem(foodItem.id);
+      await deleteFoodItem(foodItem.id);
     }
   }
 
+  // Every number here is totalled by the server - revenue in particular comes
+  // from OrderService.getTotalRevenue(), not from a reduce over this page.
   const summaryStats = [
-    { label: 'Items on menu', value: menuItems.length },
-    { label: 'Sold out', value: soldOutCount },
-    { label: 'Orders placed', value: orders.length },
-    { label: 'Revenue', value: formatRupees(totalRevenue) },
+    { label: 'Items on menu', value: adminStats?.itemsOnMenu ?? '—' },
+    { label: 'Sold out', value: adminStats?.soldOut ?? '—' },
+    { label: 'Orders placed', value: adminStats?.ordersPlaced ?? '—' },
+    { label: 'Revenue', value: adminStats ? formatRupees(adminStats.revenue) : '—' },
   ];
 
   return (
@@ -78,7 +105,12 @@ export default function AdminView() {
         </div>
 
         {activeTab === 'menu' && (
-          <button type="button" onClick={() => setFormTarget('new')} className="button-primary">
+          <button
+            type="button"
+            onClick={() => setFormTarget('new')}
+            disabled={isBusy}
+            className="button-primary"
+          >
             + Add food item
           </button>
         )}
@@ -98,7 +130,7 @@ export default function AdminView() {
           <button
             key={tab.id}
             type="button"
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => handleTabChange(tab.id)}
             aria-pressed={activeTab === tab.id}
             className={`rounded-full px-5 py-2 text-sm font-semibold transition ${
               activeTab === tab.id ? 'bg-saffron text-white' : 'text-bark hover:text-cocoa'
@@ -115,7 +147,7 @@ export default function AdminView() {
       {activeTab === 'menu' ? (
         <MenuTable menuItems={menuItems} onEdit={setFormTarget} onDelete={handleDelete} />
       ) : (
-        <OrdersList orders={orders} />
+        <OrdersList orders={orders} onRefresh={refreshOrders} isRefreshing={isBusy} />
       )}
 
       {formTarget && (

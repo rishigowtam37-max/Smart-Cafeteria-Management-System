@@ -5,8 +5,8 @@
  * screen-local state that no other view needs - the active category filter,
  * whether the mobile cart drawer is open, and the most recently placed order -
  * and composes SmartCravingBar, CategoryFilter, MenuGrid, CartPanel and
- * OrderConfirmation. SmartCravingBar renders itself away when no API key is
- * set, so this layout is unchanged for anyone running without one.
+ * OrderConfirmation. SmartCravingBar renders itself away when the server has
+ * no Gemini key configured, so this layout is unchanged for anyone without one.
  *
  * Layout: on large screens the cart is a sticky sidebar; below `lg` it
  * collapses into a bottom sheet opened from a fixed summary bar.
@@ -14,7 +14,6 @@
 
 import { useMemo, useState } from 'react';
 import { useCafeteria } from '../context/CafeteriaContext.jsx';
-import { calculateCartItemCount, calculateCartTotal } from '../utils/orderUtils.js';
 import { formatRupees } from '../utils/formatters.js';
 import SmartCravingBar from './SmartCravingBar.jsx';
 import CategoryFilter from './CategoryFilter.jsx';
@@ -25,10 +24,11 @@ import OrderConfirmation from './OrderConfirmation.jsx';
 const ALL_CATEGORIES = 'All';
 
 export default function CustomerView() {
-  const { menuItems, cartItems, isMenuLoading, placeOrder } = useCafeteria();
+  const { menuItems, cart, isMenuLoading, placeOrder, serverConfig } = useCafeteria();
   const [activeCategory, setActiveCategory] = useState(ALL_CATEGORIES);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [confirmedOrder, setConfirmedOrder] = useState(null);
+  const [isPlacingOrder, setIsPlacingOrder] = useState(false);
 
   // Categories come from the live menu, so admin-added ones appear here too.
   const availableCategories = useMemo(() => {
@@ -44,20 +44,30 @@ export default function CustomerView() {
     [menuItems, activeCategory],
   );
 
-  const cartTotal = calculateCartTotal(cartItems);
-  const cartItemCount = calculateCartItemCount(cartItems);
+  // Both come from the server's cart - nothing is summed here.
+  const cartTotal = cart.total;
+  const cartItemCount = cart.itemCount;
 
   /**
-   * Converts the cart into an order and swaps the cart panel for the receipt.
+   * Asks the server to turn the cart into an order, then shows the receipt.
    *
-   * @returns {void}
+   * A null result means the server refused - an empty cart, most likely - and
+   * the reason is already on screen in the error banner.
+   *
+   * @returns {Promise<void>}
    */
-  function handlePlaceOrder() {
-    const placedOrder = placeOrder();
+  async function handlePlaceOrder() {
+    setIsPlacingOrder(true);
 
-    if (placedOrder) {
-      setConfirmedOrder(placedOrder);
-      setIsCartOpen(false);
+    try {
+      const placedOrder = await placeOrder();
+
+      if (placedOrder) {
+        setConfirmedOrder(placedOrder);
+        setIsCartOpen(false);
+      }
+    } finally {
+      setIsPlacingOrder(false);
     }
   }
 
@@ -73,7 +83,7 @@ export default function CustomerView() {
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
         <div>
-          <SmartCravingBar />
+          <SmartCravingBar enabled={serverConfig.smartCravingEnabled} />
 
           <CategoryFilter
             categories={availableCategories}
@@ -90,7 +100,7 @@ export default function CustomerView() {
 
         {/* Desktop: sticky sidebar cart */}
         <aside className="hidden lg:sticky lg:top-24 lg:block">
-          <CartPanel onPlaceOrder={handlePlaceOrder} />
+          <CartPanel onPlaceOrder={handlePlaceOrder} isPlacingOrder={isPlacingOrder} />
         </aside>
       </div>
 
@@ -119,7 +129,11 @@ export default function CustomerView() {
             className="absolute inset-0 bg-cocoa/40"
           />
           <div className="animate-rise relative max-h-[85vh] w-full overflow-y-auto rounded-t-3xl bg-shell p-4 shadow-lift">
-            <CartPanel onPlaceOrder={handlePlaceOrder} onClose={() => setIsCartOpen(false)} />
+            <CartPanel
+              onPlaceOrder={handlePlaceOrder}
+              onClose={() => setIsCartOpen(false)}
+              isPlacingOrder={isPlacingOrder}
+            />
           </div>
         </div>
       )}

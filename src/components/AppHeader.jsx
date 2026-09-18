@@ -8,7 +8,7 @@
 import { useCafeteria } from '../context/CafeteriaContext.jsx';
 
 export default function AppHeader() {
-  const { currentUser, signOut } = useCafeteria();
+  const { currentUser, signOut, isBusy } = useCafeteria();
   const isAdmin = currentUser.role === 'admin';
 
   return (
@@ -36,7 +36,8 @@ export default function AppHeader() {
             </span>
           </div>
 
-          <button type="button" onClick={signOut} className="button-quiet">
+          {/* Signing out also releases any stock this cart was holding. */}
+          <button type="button" onClick={signOut} disabled={isBusy} className="button-quiet">
             Sign out
           </button>
         </div>

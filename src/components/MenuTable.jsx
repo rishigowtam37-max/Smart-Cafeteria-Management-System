@@ -73,7 +73,7 @@ export default function MenuTable({ menuItems, onEdit, onDelete }) {
               <th className="px-5 py-3.5 font-semibold">Item</th>
               <th className="px-5 py-3.5 font-semibold">Category</th>
               <th className="px-5 py-3.5 text-right font-semibold">Price</th>
-              <th className="px-5 py-3.5 text-right font-semibold">Stock</th>
+              <th className="px-5 py-3.5 text-right font-semibold">Available</th>
               <th className="px-5 py-3.5 text-right font-semibold">Actions</th>
             </tr>
           </thead>

@@ -3,17 +3,38 @@
  *
  * Exports the default LoginScreen component. It replaces the "1. Admin Login /
  * 2. Customer Login" branch of the Java main menu: pick a role, type the demo
- * credentials, and the context validates them. Purely client-side - no tokens,
- * no network, no real authentication.
+ * credentials, and the server decides.
+ *
+ * Nothing here knows what a valid password is. The form posts to
+ * /api/auth/login, the Java LoginService checks it, and a refusal comes back as
+ * a 401 whose message is shown below the form.
  */
 
 import { useState } from 'react';
 import { useCafeteria } from '../context/CafeteriaContext.jsx';
-import { DEMO_ACCOUNTS } from '../data/credentials.js';
 
+/**
+ * Placeholder and hint text for the two demo accounts.
+ *
+ * These are display hints only - the real credentials live in the Java
+ * LoginService constructor and are checked there. Changing a value here changes
+ * what the hint says, not what the server accepts.
+ */
 const ROLE_OPTIONS = [
-  { role: 'customer', label: 'Customer', caption: 'Browse the menu and order' },
-  { role: 'admin', label: 'Admin', caption: 'Manage menu and orders' },
+  {
+    role: 'customer',
+    label: 'Customer',
+    caption: 'Browse the menu and order',
+    hintUsername: 'customer',
+    hintPassword: 'cust123',
+  },
+  {
+    role: 'admin',
+    label: 'Admin',
+    caption: 'Manage menu and orders',
+    hintUsername: 'admin',
+    hintPassword: 'admin123',
+  },
 ];
 
 export default function LoginScreen() {
@@ -22,17 +43,28 @@ export default function LoginScreen() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [isSigningIn, setIsSigningIn] = useState(false);
 
   /**
-   * Validates the typed credentials and signs in on success.
+   * Sends the typed credentials to the server.
    *
    * @param {React.FormEvent<HTMLFormElement>} event - Form submit event.
-   * @returns {void}
+   * @returns {Promise<void>}
    */
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
-    const result = signIn(selectedRole, username, password);
-    setErrorMessage(result.ok ? '' : result.message);
+    setIsSigningIn(true);
+    setErrorMessage('');
+
+    try {
+      const result = await signIn(selectedRole, username, password);
+
+      if (!result.ok) {
+        setErrorMessage(result.message);
+      }
+    } finally {
+      setIsSigningIn(false);
+    }
   }
 
   /**
@@ -49,7 +81,7 @@ export default function LoginScreen() {
     setErrorMessage('');
   }
 
-  const demoAccount = DEMO_ACCOUNTS[selectedRole];
+  const demoAccount = ROLE_OPTIONS.find((option) => option.role === selectedRole);
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-10">
@@ -103,8 +135,9 @@ export default function LoginScreen() {
               className="field-input"
               value={username}
               onChange={(event) => setUsername(event.target.value)}
-              placeholder={demoAccount.username}
+              placeholder={demoAccount.hintUsername}
               autoComplete="username"
+              disabled={isSigningIn}
               required
             />
           </div>
@@ -134,14 +167,14 @@ export default function LoginScreen() {
             </p>
           )}
 
-          <button type="submit" className="button-primary w-full">
-            Sign in
+          <button type="submit" disabled={isSigningIn} className="button-primary w-full">
+            {isSigningIn ? 'Signing in…' : 'Sign in'}
           </button>
 
           <p className="mt-6 rounded-xl bg-sand/70 px-4 py-3 text-center text-xs leading-relaxed text-bark">
             Demo credentials ·{' '}
-            <span className="font-semibold text-cocoa">{demoAccount.username}</span> /{' '}
-            <span className="font-semibold text-cocoa">{demoAccount.password}</span>
+            <span className="font-semibold text-cocoa">{demoAccount.hintUsername}</span> /{' '}
+            <span className="font-semibold text-cocoa">{demoAccount.hintPassword}</span>
           </p>
         </form>
       </div>

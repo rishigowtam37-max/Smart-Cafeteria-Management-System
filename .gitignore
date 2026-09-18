@@ -1,6 +1,22 @@
-# Java build output (original console app)
+# Java / Maven build output
 *.class
+backend/target/
 .vscode/
+
+# The H2 order database. Generated at runtime and rebuilt by schema.sql, but the
+# orders inside it are whatever was placed on this machine - not shared state.
+# Both paths are anchored with a leading slash: an unanchored `data/` would also
+# match backend/src/main/resources/data/, which holds the tracked seed menu.
+/backend/data/
+/data/
+
+# The built React app, copied here by hand before packaging a single jar (see
+# README). It is a copy of dist/, so it is generated output like dist/ itself.
+backend/src/main/resources/static/
+
+# The Maven Wrapper jar and scripts ARE tracked on purpose - they are what lets
+# someone build with only a JDK installed. Only the downloaded Maven is ignored.
+.mvn/wrapper/maven-wrapper-*.jar
 
 # Node / Vite
 node_modules/

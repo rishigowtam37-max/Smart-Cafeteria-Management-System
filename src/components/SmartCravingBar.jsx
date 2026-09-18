@@ -6,76 +6,88 @@
  * suggestion (or error) that came back - and hands the result to
  * CravingSuggestions to draw.
  *
- * This state stays local rather than going into CafeteriaContext because
- * nothing outside the customer menu reads it; the store keeps holding only what
- * the Java services held.
+ * All it does is post the text to /api/craving. The prompt, the Gemini call and
+ * the validation that every suggested id is a real in-stock item all live in the
+ * Java CravingService. That is also where the API key lives, which is the point:
+ * this file could not leak it if it tried.
  *
- * The whole component renders nothing when no API key is configured, so a fresh
- * clone without a .env still gets the complete ordering app, just without this.
+ * The box hides itself when the server reports the feature as off, so a clone
+ * without a key gets the whole ordering app minus this panel.
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { useCafeteria } from '../context/CafeteriaContext.jsx';
-import {
-  CRAVING_EXAMPLES,
-  CRAVING_MAX_LENGTH,
-  isSmartCravingConfigured,
-  suggestFromCraving,
-} from '../data/cravingClient.js';
+import { suggestFromCraving } from '../api/flowbiteApi.js';
+import { ApiError } from '../api/client.js';
 import CravingSuggestions from './CravingSuggestions.jsx';
 
-export default function SmartCravingBar() {
-  const { menuItems, isMenuLoading } = useCafeteria();
+/** Matches the server-side cap in CravingService.MAX_CRAVING_LENGTH. */
+const CRAVING_MAX_LENGTH = 200;
+
+/** One-tap starter cravings shown as chips under the input. */
+const CRAVING_EXAMPLES = [
+  'Something spicy',
+  'Light and healthy',
+  'Very hungry',
+  'Under ₹100',
+  'Something sweet',
+];
+
+/**
+ * @param {{ enabled: boolean }} props - Whether the server has Smart Craving
+ *   configured, from /api/config.
+ * @returns {JSX.Element | null} The panel, or nothing when the feature is off.
+ */
+export default function SmartCravingBar({ enabled }) {
   const [craving, setCraving] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [suggestion, setSuggestion] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Lets a second submission cancel the first, and cancels on unmount so a
-  // reply can never land on a component that has gone away.
-  const inFlightRequest = useRef(null);
+  // Cancels a reply that arrives after the component has gone away.
+  const isMounted = useRef(true);
 
-  useEffect(() => () => inFlightRequest.current?.abort(), []);
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
-  if (!isSmartCravingConfigured()) {
+  if (!enabled) {
     return null;
   }
 
   /**
-   * Asks Gemini for picks matching the given craving text.
+   * Asks the server for picks matching the given craving text.
    *
    * @param {string} cravingText - What to search the menu for.
-   * @returns {Promise<void>} Resolves once the state reflects the outcome.
+   * @returns {Promise<void>}
    */
   async function requestSuggestions(cravingText) {
-    if (cravingText.trim() === '' || isMenuLoading) {
+    if (cravingText.trim() === '' || isThinking) {
       return;
     }
-
-    inFlightRequest.current?.abort();
-    const requestController = new AbortController();
-    inFlightRequest.current = requestController;
 
     setIsThinking(true);
     setErrorMessage('');
     setSuggestion(null);
 
     try {
-      const result = await suggestFromCraving({
-        craving: cravingText,
-        menuItems,
-        signal: requestController.signal,
-      });
+      const result = await suggestFromCraving(cravingText);
 
-      setSuggestion(result);
+      if (isMounted.current) {
+        setSuggestion(result);
+      }
     } catch (error) {
-      // A cancelled request was replaced by a newer one - say nothing.
-      if (error.name !== 'AbortError') {
+      if (!(error instanceof ApiError)) {
+        throw error;
+      }
+
+      if (isMounted.current) {
         setErrorMessage(error.message);
       }
     } finally {
-      if (inFlightRequest.current === requestController) {
-        inFlightRequest.current = null;
+      if (isMounted.current) {
         setIsThinking(false);
       }
     }
@@ -101,10 +113,8 @@ export default function SmartCravingBar() {
     requestSuggestions(example);
   }
 
-  /** Clears the suggestion and the input, returning the box to its resting state. */
+  /** Clears the suggestion and the input, returning the box to rest. */
   function handleDismiss() {
-    inFlightRequest.current?.abort();
-    inFlightRequest.current = null;
     setSuggestion(null);
     setErrorMessage('');
     setCraving('');
@@ -144,7 +154,7 @@ export default function SmartCravingBar() {
         />
         <button
           type="submit"
-          disabled={isThinking || isMenuLoading || craving.trim() === ''}
+          disabled={isThinking || craving.trim() === ''}
           className="button-primary shrink-0 sm:w-40"
         >
           {isThinking ? 'Thinking…' : 'Suggest for me'}
@@ -169,9 +179,7 @@ export default function SmartCravingBar() {
           of a search it did not visually observe. */}
       <div aria-live="polite">
         {isThinking && (
-          <p className="mt-4 animate-pulse text-sm text-bark">
-            Reading the menu for you…
-          </p>
+          <p className="mt-4 animate-pulse text-sm text-bark">Reading the menu for you…</p>
         )}
 
         {errorMessage && (

@@ -1,280 +1,437 @@
 /**
- * Single application store for FlowBite, held entirely in React state.
+ * The application store - now a cache of what the server said, not a rulebook.
  *
- * Exports: CafeteriaProvider (context provider component) and useCafeteria
- * (hook that reads the store).
+ * Exports: CafeteriaProvider and the useCafeteria hook.
  *
- * This file is the web equivalent of the four Java service classes combined:
- *   LoginService -> signIn / signOut / currentUser
- *   FoodService  -> menuItems / addFoodItem / updateFoodItem / deleteFoodItem
- *   CartService  -> cartItems / addToCart / changeCartQuantity / removeFromCart
- *   OrderService -> orders / placeOrder
+ * This file used to be the whole domain: it validated credentials, capped cart
+ * quantities against stock, summed totals and generated FB-0001 order IDs. All
+ * of that now lives in the Spring Boot application, in the Java classes the
+ * console app has always used. What is left here is the part that genuinely
+ * belongs to a browser: hold the last answer, know when a request is in flight,
+ * and show what went wrong.
  *
- * Stock rule (ported from CartService.addToCart): a customer can never hold
- * more units of an item than the menu has in stock. The Java app decremented
- * stock the moment an item entered the cart and restored it on removal; the web
- * app instead caps the cart against stock and decrements once the order is
- * actually placed, which is the same guarantee with less bookkeeping.
+ * The rule this file follows: **never compute, only display.** Every total and
+ * every stock number below arrived over the wire.
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { DEMO_ACCOUNTS } from '../data/credentials.js';
-import { loadMenuItems } from '../data/menuRepository.js';
-import { calculateCartTotal, generateOrderId } from '../utils/orderUtils.js';
+import { ApiError } from '../api/client.js';
+import * as api from '../api/flowbiteApi.js';
 
 const CafeteriaContext = createContext(null);
 
-/**
- * Wraps the app and supplies every piece of shared state plus the actions that
- * change it.
- *
- * @param {{ children: React.ReactNode }} props - Component props.
- * @returns {JSX.Element} Provider element.
- */
+/** An empty cart, used before the first fetch and after signing out. */
+const EMPTY_CART = { lines: [], total: 0, itemCount: 0, notice: null };
+
 export function CafeteriaProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [menuItems, setMenuItems] = useState([]);
-  const [cartItems, setCartItems] = useState([]);
+  const [cart, setCart] = useState(EMPTY_CART);
   const [orders, setOrders] = useState([]);
-  const [isMenuLoading, setIsMenuLoading] = useState(true);
-  const [menuLoadError, setMenuLoadError] = useState('');
+  const [adminStats, setAdminStats] = useState(null);
 
-  // Load the seed menu once, on first mount.
+  // Which optional features this server has configured, from /api/config.
+  const [serverConfig, setServerConfig] = useState({ smartCravingEnabled: false });
+
+  // True only while the app is working out whether a session already exists.
+  const [isStartingUp, setIsStartingUp] = useState(true);
+  const [isMenuLoading, setIsMenuLoading] = useState(false);
+  const [pendingActions, setPendingActions] = useState(0);
+
+  const [errorMessage, setErrorMessage] = useState('');
+  const [notice, setNotice] = useState('');
+
+  const isBusy = pendingActions > 0;
+
+  /**
+   * Runs an API call with the shared error handling every action needs.
+   *
+   * A 401 means the session is gone - expired, or signed out in another tab -
+   * so the user is dropped back to the login screen rather than left clicking
+   * buttons that will all fail.
+   *
+   * @param {() => Promise<T>} call - The API call to run.
+   * @returns {Promise<T | undefined>} The result, or undefined if it failed.
+   * @template T
+   */
+  const run = useCallback(async (call) => {
+    setPendingActions((count) => count + 1);
+    setErrorMessage('');
+
+    try {
+      return await call();
+    } catch (error) {
+      if (!(error instanceof ApiError)) {
+        throw error;
+      }
+
+      if (error.isUnauthorized) {
+        setCurrentUser(null);
+        setCart(EMPTY_CART);
+        setMenuItems([]);
+        setOrders([]);
+        setAdminStats(null);
+      }
+
+      setErrorMessage(error.message);
+      return undefined;
+    } finally {
+      setPendingActions((count) => count - 1);
+    }
+  }, []);
+
+  /**
+   * Stores a cart response, surfacing the server's notice if it sent one.
+   *
+   * The notice appears when an admin deleted something that was sitting in this
+   * cart - the server drops the line and says so.
+   *
+   * @param {object | undefined} cartDto - A cart from the API.
+   * @returns {void}
+   */
+  const applyCart = useCallback((cartDto) => {
+    if (!cartDto) {
+      return;
+    }
+
+    setCart(cartDto);
+
+    if (cartDto.notice) {
+      setNotice(cartDto.notice);
+    }
+  }, []);
+
+  /** Refetches the menu. Called after anything that can move stock. */
+  const refreshMenu = useCallback(async () => {
+    const items = await run(api.fetchMenu);
+
+    if (items) {
+      setMenuItems(items);
+    }
+  }, [run]);
+
+  /** Refetches just the dashboard totals (admin only). */
+  const refreshStats = useCallback(async () => {
+    const stats = await run(api.fetchAdminStats);
+
+    if (stats) {
+      setAdminStats(stats);
+    }
+  }, [run]);
+
+  /** Refetches the order list and the dashboard totals (admin only). */
+  const refreshOrders = useCallback(async () => {
+    const [placedOrders, stats] = await Promise.all([
+      run(api.fetchOrders),
+      run(api.fetchAdminStats),
+    ]);
+
+    if (placedOrders) {
+      setOrders(placedOrders);
+    }
+
+    if (stats) {
+      setAdminStats(stats);
+    }
+  }, [run]);
+
+  /**
+   * Loads everything a signed-in user needs.
+   *
+   * @param {{role: string}} user - The signed-in user.
+   * @returns {Promise<void>}
+   */
+  const loadWorkspace = useCallback(
+    async (user) => {
+      setIsMenuLoading(true);
+
+      try {
+        const items = await run(api.fetchMenu);
+
+        if (items) {
+          setMenuItems(items);
+        }
+
+        if (user.role === 'customer') {
+          applyCart(await run(api.fetchCart));
+        } else {
+          await refreshOrders();
+        }
+      } finally {
+        setIsMenuLoading(false);
+      }
+    },
+    [run, applyCart, refreshOrders],
+  );
+
+  // On load, ask the server whether this browser already has a session. A 401
+  // here is the normal "not signed in" answer, not an error worth showing.
   useEffect(() => {
     let isStillMounted = true;
 
-    loadMenuItems()
-      .then((items) => {
-        if (isStillMounted) {
-          setMenuItems(items);
+    (async () => {
+      // The feature flags are fetched first and separately: they are readable
+      // without a session, and a failure here must not stop the app loading.
+      try {
+        const config = await api.fetchConfig();
+
+        if (isStillMounted && config) {
+          setServerConfig(config);
         }
-      })
-      .catch((error) => {
-        if (isStillMounted) {
-          setMenuLoadError(error.message);
+      } catch {
+        // Leave the defaults - features stay hidden rather than half-working.
+      }
+
+      try {
+        const user = await api.fetchCurrentUser();
+
+        if (isStillMounted && user) {
+          setCurrentUser(user);
+          await loadWorkspace(user);
         }
-      })
-      .finally(() => {
-        if (isStillMounted) {
-          setIsMenuLoading(false);
+      } catch (error) {
+        if (isStillMounted && error instanceof ApiError && !error.isUnauthorized) {
+          setErrorMessage(error.message);
         }
-      });
+      } finally {
+        if (isStillMounted) {
+          setIsStartingUp(false);
+        }
+      }
+    })();
 
     return () => {
       isStillMounted = false;
     };
-  }, []);
+  }, [loadWorkspace]);
+
+  /* ------------------------------------------------------------------ auth */
 
   /**
-   * Validates demo credentials for the chosen role.
+   * Signs in against the server.
    *
-   * @param {'admin' | 'customer'} role - Role picked on the login screen.
-   * @param {string} username - Typed username.
-   * @param {string} password - Typed password.
-   * @returns {{ ok: boolean, message?: string }} Success flag, plus an error
-   *   message to show under the form when the credentials do not match.
+   * The credentials are checked by the Java LoginService - this function has no
+   * idea what a valid password looks like.
+   *
+   * @param {'admin' | 'customer'} role
+   * @param {string} username
+   * @param {string} password
+   * @returns {Promise<{ok: boolean, message?: string}>}
    */
-  const signIn = useCallback((role, username, password) => {
-    const account = DEMO_ACCOUNTS[role];
+  const signIn = useCallback(
+    async (role, username, password) => {
+      try {
+        const user = await api.signIn(role, username, password);
 
-    if (!account || account.username !== username.trim() || account.password !== password) {
-      return { ok: false, message: `Invalid ${role} credentials. Check the demo hints below.` };
-    }
+        setCurrentUser(user);
+        setErrorMessage('');
+        await loadWorkspace(user);
 
-    setCurrentUser({ role, name: account.displayName, username: account.username });
-    return { ok: true };
-  }, []);
+        return { ok: true };
+      } catch (error) {
+        if (error instanceof ApiError) {
+          return { ok: false, message: error.message };
+        }
 
-  /** Logs the current user out and empties their in-progress cart. */
-  const signOut = useCallback(() => {
+        throw error;
+      }
+    },
+    [loadWorkspace],
+  );
+
+  /** Signs out, which also returns any stock held in the cart. */
+  const signOut = useCallback(async () => {
+    await run(api.signOut);
+
     setCurrentUser(null);
-    setCartItems([]);
-  }, []);
+    setCart(EMPTY_CART);
+    setMenuItems([]);
+    setOrders([]);
+    setAdminStats(null);
+    setNotice('');
+  }, [run]);
+
+  /* ------------------------------------------------------------------ cart */
 
   /**
-   * Adds one unit of a food item to the cart, or increments it if already there.
+   * Adds units to the cart.
    *
-   * @param {object} foodItem - The menu item being ordered.
-   * @returns {void}
+   * The menu is refetched afterwards because adding reserves stock, so every
+   * other item's availability may now read differently - including for other
+   * customers.
+   *
+   * @param {object} foodItem - The menu item to order.
+   * @param {number} [quantity] - Units to add, default 1.
+   * @returns {Promise<void>}
    */
-  const addToCart = useCallback((foodItem) => {
-    setCartItems((previousCart) => {
-      const existingLine = previousCart.find((line) => line.id === foodItem.id);
+  const addToCart = useCallback(
+    async (foodItem, quantity = 1) => {
+      const updatedCart = await run(() => api.addToCart(foodItem.id, quantity));
 
-      if (!existingLine) {
-        return foodItem.quantity > 0
-          ? [...previousCart, { ...foodItem, quantity: 1, availableQuantity: foodItem.quantity }]
-          : previousCart;
+      if (updatedCart) {
+        applyCart(updatedCart);
+        await refreshMenu();
       }
+    },
+    [run, applyCart, refreshMenu],
+  );
 
-      // Refuse to exceed stock, matching "Not enough stock available." in Java.
-      if (existingLine.quantity >= foodItem.quantity) {
-        return previousCart;
+  /**
+   * Sets a cart line to an absolute quantity. Zero removes the line.
+   *
+   * @param {number} foodId
+   * @param {number} quantity
+   * @returns {Promise<void>}
+   */
+  const setCartQuantity = useCallback(
+    async (foodId, quantity) => {
+      const updatedCart = await run(() => api.changeCartQuantity(foodId, quantity));
+
+      if (updatedCart) {
+        applyCart(updatedCart);
+        await refreshMenu();
       }
+    },
+    [run, applyCart, refreshMenu],
+  );
 
-      return previousCart.map((line) =>
-        line.id === foodItem.id ? { ...line, quantity: line.quantity + 1 } : line,
-      );
-    });
-  }, []);
+  const removeFromCart = useCallback(
+    async (foodId) => {
+      const updatedCart = await run(() => api.removeFromCart(foodId));
 
-  /**
-   * Applies a relative change to a cart line's quantity, removing the line when
-   * it drops to zero.
-   *
-   * @param {number} foodItemId - Which cart line to change.
-   * @param {number} delta - +1 or -1.
-   * @returns {void}
-   */
-  const changeCartQuantity = useCallback((foodItemId, delta) => {
-    setCartItems((previousCart) =>
-      previousCart
-        .map((line) => {
-          if (line.id !== foodItemId) {
-            return line;
-          }
+      if (updatedCart) {
+        applyCart(updatedCart);
+        await refreshMenu();
+      }
+    },
+    [run, applyCart, refreshMenu],
+  );
 
-          const requestedQuantity = line.quantity + delta;
-          const cappedQuantity = Math.min(requestedQuantity, line.availableQuantity);
-          return { ...line, quantity: cappedQuantity };
-        })
-        .filter((line) => line.quantity > 0),
-    );
-  }, []);
+  const clearCart = useCallback(async () => {
+    const updatedCart = await run(api.clearCart);
+
+    if (updatedCart) {
+      applyCart(updatedCart);
+      await refreshMenu();
+    }
+  }, [run, applyCart, refreshMenu]);
 
   /**
-   * Drops a line from the cart entirely.
+   * Places the order.
    *
-   * @param {number} foodItemId - Which cart line to remove.
-   * @returns {void}
+   * @returns {Promise<object | null>} The placed order, or null if refused -
+   *   an empty cart, most likely, which the server reports as a 409.
    */
-  const removeFromCart = useCallback((foodItemId) => {
-    setCartItems((previousCart) => previousCart.filter((line) => line.id !== foodItemId));
-  }, []);
+  const placeOrder = useCallback(async () => {
+    const placedOrder = await run(api.placeOrder);
 
-  /** Empties the cart without placing an order. */
-  const clearCart = useCallback(() => setCartItems([]), []);
-
-  /**
-   * Turns the current cart into an order, decrements menu stock and empties the
-   * cart. Mirrors OrderService.placeOrder.
-   *
-   * @returns {object | null} The placed order, or null when the cart is empty.
-   */
-  const placeOrder = useCallback(() => {
-    if (cartItems.length === 0) {
+    if (!placedOrder) {
       return null;
     }
 
-    const placedOrder = {
-      orderId: generateOrderId(orders.length + 1),
-      customerName: currentUser?.name ?? 'Guest',
-      items: cartItems.map((line) => ({ ...line })),
-      totalAmount: calculateCartTotal(cartItems),
-      placedAt: Date.now(),
-    };
+    setCart(EMPTY_CART);
+    await refreshMenu();
 
-    setOrders((previousOrders) => [placedOrder, ...previousOrders]);
-
-    setMenuItems((previousMenu) =>
-      previousMenu.map((menuItem) => {
-        const orderedLine = cartItems.find((line) => line.id === menuItem.id);
-        return orderedLine
-          ? { ...menuItem, quantity: Math.max(0, menuItem.quantity - orderedLine.quantity) }
-          : menuItem;
-      }),
-    );
-
-    setCartItems([]);
     return placedOrder;
-  }, [cartItems, currentUser, orders.length]);
+  }, [run, refreshMenu]);
 
-  /**
-   * Appends a new food item to the menu (admin only).
-   *
-   * @param {object} newFoodItem - Item already assigned an id by the caller.
-   * @returns {void}
-   */
-  const addFoodItem = useCallback((newFoodItem) => {
-    setMenuItems((previousMenu) => [...previousMenu, newFoodItem]);
-  }, []);
+  /* ----------------------------------------------------------------- admin */
 
-  /**
-   * Overwrites an existing food item, matched by id (admin only).
-   *
-   * @param {object} updatedFoodItem - Full replacement item, same id.
-   * @returns {void}
-   */
-  const updateFoodItem = useCallback((updatedFoodItem) => {
-    setMenuItems((previousMenu) =>
-      previousMenu.map((item) => (item.id === updatedFoodItem.id ? updatedFoodItem : item)),
-    );
+  const addFoodItem = useCallback(
+    async (foodItem) => {
+      const created = await run(() => api.createMenuItem(foodItem));
 
-    // Keep any cart line in sync so a customer never checks out a stale price.
-    setCartItems((previousCart) =>
-      previousCart.map((line) =>
-        line.id === updatedFoodItem.id
-          ? {
-              ...line,
-              name: updatedFoodItem.name,
-              price: updatedFoodItem.price,
-              category: updatedFoodItem.category,
-              emoji: updatedFoodItem.emoji,
-              availableQuantity: updatedFoodItem.quantity,
-              quantity: Math.min(line.quantity, updatedFoodItem.quantity),
-            }
-          : line,
-      ).filter((line) => line.quantity > 0),
-    );
-  }, []);
+      if (created) {
+        await Promise.all([refreshMenu(), refreshStats()]);
+      }
 
-  /**
-   * Removes a food item from the menu and from any cart holding it.
-   *
-   * @param {number} foodItemId - Item to delete.
-   * @returns {void}
-   */
-  const deleteFoodItem = useCallback((foodItemId) => {
-    setMenuItems((previousMenu) => previousMenu.filter((item) => item.id !== foodItemId));
-    setCartItems((previousCart) => previousCart.filter((line) => line.id !== foodItemId));
-  }, []);
+      return created ?? null;
+    },
+    [run, refreshMenu, refreshStats],
+  );
+
+  const updateFoodItem = useCallback(
+    async (id, foodItem) => {
+      const updated = await run(() => api.updateMenuItem(id, foodItem));
+
+      if (updated) {
+        await Promise.all([refreshMenu(), refreshStats()]);
+      }
+
+      return updated ?? null;
+    },
+    [run, refreshMenu, refreshStats],
+  );
+
+  const deleteFoodItem = useCallback(
+    async (id) => {
+      await run(() => api.deleteMenuItem(id));
+      await Promise.all([refreshMenu(), refreshStats()]);
+    },
+    [run, refreshMenu, refreshStats],
+  );
+
+  /* ----------------------------------------------------------------- misc */
+
+  const dismissError = useCallback(() => setErrorMessage(''), []);
+  const dismissNotice = useCallback(() => setNotice(''), []);
 
   const contextValue = useMemo(
     () => ({
       currentUser,
       menuItems,
-      cartItems,
+      cart,
       orders,
+      adminStats,
+      serverConfig,
+      isStartingUp,
       isMenuLoading,
-      menuLoadError,
+      isBusy,
+      errorMessage,
+      notice,
       signIn,
       signOut,
       addToCart,
-      changeCartQuantity,
+      setCartQuantity,
       removeFromCart,
       clearCart,
       placeOrder,
       addFoodItem,
       updateFoodItem,
       deleteFoodItem,
+      refreshMenu,
+      refreshOrders,
+      refreshStats,
+      dismissError,
+      dismissNotice,
     }),
     [
       currentUser,
       menuItems,
-      cartItems,
+      cart,
       orders,
+      adminStats,
+      serverConfig,
+      isStartingUp,
       isMenuLoading,
-      menuLoadError,
+      isBusy,
+      errorMessage,
+      notice,
       signIn,
       signOut,
       addToCart,
-      changeCartQuantity,
+      setCartQuantity,
       removeFromCart,
       clearCart,
       placeOrder,
       addFoodItem,
       updateFoodItem,
       deleteFoodItem,
+      refreshMenu,
+      refreshOrders,
+      refreshStats,
+      dismissError,
+      dismissNotice,
     ],
   );
 
