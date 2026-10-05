@@ -91,6 +91,30 @@
       </plugin>
 
       <!--
+        Statement/branch coverage for the PBL report. Runs as part of `./mvnw test`
+        and writes backend/target/site/jacoco/index.html.
+      -->
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>0.8.13</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>report</id>
+            <phase>test</phase>
+            <goals>
+              <goal>report</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!--
         Lets the original console app be launched from the same build:
           ./mvnw compile exec:java -Dexec.mainClass=com.flowbite.console.ConsoleApp
         Console I/O needs the real terminal, hence the inherited IO.
